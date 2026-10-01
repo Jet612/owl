@@ -1,0 +1,68 @@
+# MediaMTX config for an owl camera (Raspberry Pi 5).
+#
+# Only settings that differ from MediaMTX's defaults are listed here; every
+# other option keeps its built-in default. The full reference lives at
+# https://github.com/bluenviron/mediamtx/blob/main/mediamtx.yml
+#
+# The owl-nest dashboard plays the camera over WebRTC (WHEP) at
+#   http://<pi-tailscale-address>:8889/owl/whep
+
+logLevel: info
+
+###############################################
+# Authentication
+#
+# Nobody needs to publish: the camera is read by MediaMTX itself.
+# Viewing is allowed from this Pi and from the Tailscale network only
+# (100.64.0.0/10 and fd7a:115c:a1e0::/48 are the ranges Tailscale assigns).
+# Add your LAN range here (e.g. 192.168.1.0/24) to view without Tailscale.
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1", "100.64.0.0/10", "fd7a:115c:a1e0::/48"]
+    permissions:
+      - action: read
+        path:
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+###############################################
+# Protocols
+#
+# WebRTC is what the dashboard uses. RTSP stays on for debugging, e.g.
+#   ffplay rtsp://<pi-tailscale-address>:8554/owl
+# The rest are switched off since nothing uses them.
+
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+# The dashboard runs on a different origin, so the browser needs CORS.
+webrtcAllowOrigins: ["*"]
+
+rtsp: true
+rtspAddress: :8554
+
+rtmp: false
+hls: false
+srt: false
+moq: false
+
+###############################################
+# Paths
+
+paths:
+  owl:
+    source: rpiCamera
+    rpiCameraWidth: 1920
+    rpiCameraHeight: 1080
+    rpiCameraFPS: 30
+    # Flip these if the camera is mounted upside down.
+    rpiCameraHFlip: false
+    rpiCameraVFlip: false
