@@ -1,0 +1,24 @@
+[Unit]
+Description=MediaMTX camera stream for owl
+Documentation=https://github.com/Jet612/owl
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mediamtx
+Group=mediamtx
+# Camera access comes from the mediamtx user being in the video group
+# (the install script sets that up).
+ExecStart=/usr/local/bin/mediamtx /usr/local/etc/mediamtx.yml
+Restart=always
+RestartSec=5
+
+# Light hardening. MediaMTX writes and runs its camera helper from /dev/shm,
+# so /dev must stay reachable (no PrivateDevices).
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
