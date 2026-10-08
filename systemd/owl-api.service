@@ -1,0 +1,25 @@
+[Unit]
+Description=Owl public API: clips and live stream for the website
+Documentation=https://github.com/Jet612/owl
+After=network-online.target mediamtx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jet
+Group=jet
+WorkingDirectory=/home/jet/owl
+EnvironmentFile=/etc/owl/owl.env
+ExecStart=/home/jet/owl/.venv/bin/python -u -m owl.api
+Restart=always
+RestartSec=3
+
+StateDirectory=owl
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

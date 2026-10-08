@@ -1,0 +1,32 @@
+[Unit]
+Description=Owl camera: live stream, animal detection and clip recording
+Documentation=https://github.com/Jet612/owl
+After=network-online.target mediamtx.service
+Wants=network-online.target mediamtx.service
+
+[Service]
+Type=simple
+User=jet
+Group=jet
+SupplementaryGroups=video render
+WorkingDirectory=/home/jet/owl
+EnvironmentFile=/etc/owl/owl.env
+# HailoRT otherwise tries to write hailort.log into the read-only home directory.
+Environment=HAILORT_LOGGER_PATH=NONE
+# The species model is downloaded once by the installer and then only read from here.
+Environment=HF_HOME=/var/lib/owl/models
+Environment=HF_HUB_OFFLINE=1
+ExecStart=/home/jet/owl/.venv/bin/python -u -m owl.vision
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# Clips, snapshots and status live in /var/lib/owl.
+StateDirectory=owl
+StateDirectoryMode=0750
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

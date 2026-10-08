@@ -1,0 +1,90 @@
+# Species the camera can name, one per line:  category | common name | scientific name
+#
+# The classifier (BioCLIP) picks the best match from this list for each sighting,
+# so it can only name what is on it. Add a line to teach it a new animal, or
+# delete lines for animals that don't live near you (fewer choices means fewer
+# mix-ups). Categories: mammal, bird, reptile, amphibian, pet.
+#
+# Installed to /etc/owl/species.txt. Restart afterwards:  sudo systemctl restart owl-vision
+# Northern Virginia defaults.
+
+# Mammals
+mammal | white-tailed deer | Odocoileus virginianus
+mammal | red fox | Vulpes vulpes
+mammal | gray fox | Urocyon cinereoargenteus
+mammal | coyote | Canis latrans
+mammal | gray wolf | Canis lupus   # not found in Virginia; delete this line if coyotes get called wolves
+mammal | bobcat | Lynx rufus
+mammal | american black bear | Ursus americanus
+mammal | raccoon | Procyon lotor
+mammal | virginia opossum | Didelphis virginiana
+mammal | striped skunk | Mephitis mephitis
+mammal | groundhog | Marmota monax
+mammal | eastern cottontail | Sylvilagus floridanus
+mammal | eastern gray squirrel | Sciurus carolinensis
+mammal | fox squirrel | Sciurus niger
+mammal | southern flying squirrel | Glaucomys volans
+mammal | eastern chipmunk | Tamias striatus
+mammal | north american river otter | Lontra canadensis
+mammal | north american beaver | Castor canadensis
+mammal | muskrat | Ondatra zibethicus
+mammal | brown rat | Rattus norvegicus
+
+# Pets
+pet | domestic dog | Canis lupus familiaris
+pet | domestic cat | Felis catus
+
+# Birds
+bird | northern cardinal | Cardinalis cardinalis
+bird | blue jay | Cyanocitta cristata
+bird | american robin | Turdus migratorius
+bird | carolina chickadee | Poecile carolinensis
+bird | tufted titmouse | Baeolophus bicolor
+bird | carolina wren | Thryothorus ludovicianus
+bird | house finch | Haemorhous mexicanus
+bird | american goldfinch | Spinus tristis
+bird | mourning dove | Zenaida macroura
+bird | downy woodpecker | Dryobates pubescens
+bird | red-bellied woodpecker | Melanerpes carolinus
+bird | northern flicker | Colaptes auratus
+bird | pileated woodpecker | Dryocopus pileatus
+bird | white-breasted nuthatch | Sitta carolinensis
+bird | dark-eyed junco | Junco hyemalis
+bird | song sparrow | Melospiza melodia
+bird | white-throated sparrow | Zonotrichia albicollis
+bird | chipping sparrow | Spizella passerina
+bird | house sparrow | Passer domesticus
+bird | eastern towhee | Pipilo erythrophthalmus
+bird | european starling | Sturnus vulgaris
+bird | common grackle | Quiscalus quiscula
+bird | red-winged blackbird | Agelaius phoeniceus
+bird | brown-headed cowbird | Molothrus ater
+bird | eastern bluebird | Sialia sialis
+bird | gray catbird | Dumetella carolinensis
+bird | northern mockingbird | Mimus polyglottos
+bird | brown thrasher | Toxostoma rufum
+bird | cedar waxwing | Bombycilla cedrorum
+bird | ruby-throated hummingbird | Archilochus colubris
+bird | american crow | Corvus brachyrhynchos
+bird | fish crow | Corvus ossifragus
+bird | red-tailed hawk | Buteo jamaicensis
+bird | cooper's hawk | Accipiter cooperii
+bird | barred owl | Strix varia
+bird | great horned owl | Bubo virginianus
+bird | eastern screech-owl | Megascops asio
+bird | turkey vulture | Cathartes aura
+bird | black vulture | Coragyps atratus
+bird | canada goose | Branta canadensis
+bird | mallard | Anas platyrhynchos
+bird | great blue heron | Ardea herodias
+bird | wild turkey | Meleagris gallopavo
+
+# Reptiles and amphibians
+reptile | eastern ratsnake | Pantherophis alleghaniensis
+reptile | eastern copperhead | Agkistrodon contortrix
+reptile | eastern garter snake | Thamnophis sirtalis
+reptile | eastern box turtle | Terrapene carolina
+reptile | common snapping turtle | Chelydra serpentina
+reptile | eastern fence lizard | Sceloporus undulatus
+reptile | common five-lined skink | Plestiodon fasciatus
+amphibian | american toad | Anaxyrus americanus

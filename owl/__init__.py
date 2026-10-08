@@ -1,0 +1,1 @@
+"""Owl wildlife camera."""

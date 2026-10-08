@@ -4,53 +4,63 @@
 # other option keeps its built-in default. The full reference lives at
 # https://github.com/bluenviron/mediamtx/blob/main/mediamtx.yml
 #
-# The owl-nest dashboard plays the camera over WebRTC (WHEP) at
-#   http://<pi-tailscale-address>:8889/owl/whep
+# owl-vision publishes the camera to rtsp://127.0.0.1:8554/owl. Viewers reach it
+# two ways:
+#   - the public API (owl-api, behind Tailscale Funnel) proxies HLS from :8888
+#   - on the tailnet, WebRTC at http://<pi-tailscale-address>:8889/owl
 
 logLevel: info
 
 ###############################################
 # Authentication
 #
-# Nobody needs to publish: the camera is read by MediaMTX itself.
-# Viewing is allowed from this Pi and from the Tailscale network only
-# (100.64.0.0/10 and fd7a:115c:a1e0::/48 are the ranges Tailscale assigns).
-# Add your LAN range here (e.g. 192.168.1.0/24) to view without Tailscale.
+# Only this Pi may publish. Reading is allowed from this Pi and from the
+# Tailscale network (100.64.0.0/10 and fd7a:115c:a1e0::/48 are the ranges
+# Tailscale assigns). Public viewers go through owl-api, which checks their
+# token and connects from 127.0.0.1.
 
 authMethod: internal
 authInternalUsers:
   - user: any
     pass:
-    ips: ["127.0.0.1", "::1", "100.64.0.0/10", "fd7a:115c:a1e0::/48"]
-    permissions:
-      - action: read
-        path:
-  - user: any
-    pass:
     ips: ["127.0.0.1", "::1"]
     permissions:
+      - action: publish
+        path: owl
+      - action: read
+        path:
       - action: api
       - action: metrics
       - action: pprof
+  - user: any
+    pass:
+    ips: ["100.64.0.0/10", "fd7a:115c:a1e0::/48"]
+    permissions:
+      - action: read
+        path:
 
 ###############################################
 # Protocols
-#
-# WebRTC is what the dashboard uses. RTSP stays on for debugging, e.g.
-#   ffplay rtsp://<pi-tailscale-address>:8554/owl
-# The rest are switched off since nothing uses them.
-
-webrtc: true
-webrtcAddress: :8889
-webrtcLocalUDPAddress: :8189
-# The dashboard runs on a different origin, so the browser needs CORS.
-webrtcAllowOrigins: ["*"]
 
 rtsp: true
 rtspAddress: :8554
 
+# Low-latency HLS for the public site. Localhost only: owl-api proxies it.
+hls: true
+hlsAddress: 127.0.0.1:8888
+hlsAlwaysRemux: true
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+
+# WebRTC for tailnet viewers (lowest latency).
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAllowOrigins: ["*"]
+
 rtmp: false
-hls: false
 srt: false
 moq: false
 
@@ -59,10 +69,4 @@ moq: false
 
 paths:
   owl:
-    source: rpiCamera
-    rpiCameraWidth: 1920
-    rpiCameraHeight: 1080
-    rpiCameraFPS: 30
-    # Flip these if the camera is mounted upside down.
-    rpiCameraHFlip: false
-    rpiCameraVFlip: false
+    source: publisher
