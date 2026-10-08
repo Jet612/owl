@@ -31,6 +31,10 @@ MIN_SUBMIT_INTERVAL = 0.25
 FAST_RESULTS = 6
 SLOW_INTERVAL = 3.0
 BOX_COLOUR = (0, 220, 0)
+# The index goes at the front of each clip so that Safari and Chrome can start and seek quickly.
+MP4_OPTIONS = {"movflags": "+faststart"}
+# Snapshots are what the gallery loads 24 at a time over a home connection, so they stay small.
+THUMB_WIDTH = 640
 
 Box = tuple[int, int, int, int]
 
@@ -73,16 +77,23 @@ class Session:
 
 
 def _save_jpeg(path, rgb: np.ndarray, box: Box | None = None, caption: str = "") -> None:
+    """Save `rgb` as a JPEG at most THUMB_WIDTH wide, with the box and caption drawn on it."""
     image = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    height, width = image.shape[:2]
+    if width > THUMB_WIDTH:
+        scale = THUMB_WIDTH / width
+        image = cv2.resize(image, (THUMB_WIDTH, round(height * scale)), interpolation=cv2.INTER_AREA)
+        if box:
+            box = tuple(round(v * scale) for v in box)
     if box:
         x0, y0, x1, y1 = box
         cv2.rectangle(image, (x0, y0), (x1, y1), BOX_COLOUR, 2)
         if caption:
             cv2.putText(
                 image, caption, (x0 + 4, max(y0 - 8, 20)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, BOX_COLOUR, 2,
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, BOX_COLOUR, 2,
             )
-    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
     if ok:
         tmp = path.with_suffix(".jpg.tmp")
         tmp.write_bytes(encoded.tobytes())
@@ -119,7 +130,7 @@ class Recorder:
         clips_dir = self._config.clips_dir
         clip_id = clips.new_clip_id(clips_dir, now)
         self._circular.open_output(PyavOutput(
-            str(clips_dir / f"{clip_id}.mp4.part"), format="mp4", options={"movflags": "+faststart"}
+            str(clips_dir / f"{clip_id}.mp4.part"), format="mp4", options=MP4_OPTIONS
         ))
         self._session = Session(
             self._next_id, clip_id, started_at=now - self._config.pre_roll, last_activity=now
@@ -339,7 +350,7 @@ class Recorder:
             "id": session.clip_id,
             "started_at": round(started_at, 3),
             "ended_at": round(ended_at, 3),
-            "expires_at": round(ended_at + days * 86400, 3),
+            "expires_at": round(started_at + days * 86400, 3),
             "duration": round(ended_at - started_at, 1),
             **outcome,
             "categories": sorted(set(outcome["label_categories"].values())),

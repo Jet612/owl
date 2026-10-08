@@ -8,6 +8,7 @@ and plain movement; the species classifier then says what it was (recorder.py).
 
 import collections
 import logging
+import os
 import signal
 import threading
 import time
@@ -31,6 +32,90 @@ LOG = logging.getLogger("owl.vision")
 STATUS_INTERVAL = 2.0
 PRUNE_INTERVAL = 3600.0
 RTSP_RETRY = 5.0
+# The camera loop must finish a pass at least this often (seconds), or the process restarts.
+WATCHDOG_TIMEOUT = 30.0
+# Wait this long (seconds) after failing to open the camera before exiting, so systemd's
+# restarts don't spin.
+CAMERA_RETRY = 10.0
+# At most one low-disk warning in this many seconds.
+DISK_WARNING_INTERVAL = 24 * 3600.0
+
+
+class Watchdog:
+    """Exits the process when the camera loop stops making progress, so systemd restarts it.
+
+    A camera that was unplugged or crashed leaves picamera2 waiting for a frame that never
+    arrives, and nothing in Python can interrupt that. After the restart the service either
+    finds the camera again or keeps retrying until it does, so no one has to restart it by hand.
+    """
+
+    def __init__(self, timeout: float, on_stall=None):
+        self._timeout = timeout
+        self._on_stall = on_stall or self._exit
+        self._last = time.monotonic()
+        self._stopped = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="watchdog", daemon=True)
+
+    def start(self) -> None:
+        self.beat()
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stopped.set()
+
+    def beat(self) -> None:
+        self._last = time.monotonic()
+
+    def _run(self) -> None:
+        while not self._stopped.wait(min(self._timeout / 4, 1.0)):
+            if time.monotonic() - self._last > self._timeout:
+                self._on_stall()
+                return
+
+    @staticmethod
+    def _exit() -> None:
+        LOG.critical("The camera loop has stalled; exiting so that systemd restarts the service")
+        logging.shutdown()
+        os._exit(70)
+
+
+class DiskGuard:
+    """Deletes expired clips, and tells the owner when the disk is filling up.
+
+    Clips are the only copy, so nothing is deleted early without a notification saying so.
+    """
+
+    def __init__(self, config: Config, notifier: Notifier):
+        self._config = config
+        self._notifier = notifier
+        self._last_warning = float("-inf")
+
+    def run(self) -> None:
+        config = self._config
+        deleted = clips.prune(config.clips_dir, config.retention_days, config.min_free_gb)
+        if deleted:
+            first, last = (self._day(deleted[0]), self._day(deleted[-1]))
+            span = first if first == last else f"{first} to {last}"
+            self._notifier.send(
+                "Clip disk is full",
+                f"Free space fell below {config.min_free_gb:g} GB, so the {len(deleted)} oldest "
+                f"clips ({span}) were deleted early. Download clips you want to keep, or make "
+                "room on the Pi.",
+                tags="warning",
+            )
+        warning = clips.low_disk_warning(config.clips_dir, config.low_disk_percent)
+        now = time.monotonic()
+        if warning and now - self._last_warning >= DISK_WARNING_INTERVAL:
+            self._last_warning = now
+            self._notifier.send(
+                "Clip disk is almost full",
+                f"{warning} Below {config.min_free_gb:g} GB free, the oldest clips are deleted early.",
+                tags="warning",
+            )
+
+    @staticmethod
+    def _day(clip: dict) -> str:
+        return time.strftime("%b %d", time.localtime(clip["started_at"]))
 
 
 class LiveStream:
@@ -85,7 +170,9 @@ class Grab:
 
 def run(config: Config) -> None:
     config.clips_dir.mkdir(parents=True, exist_ok=True)
-    clips.prune(config.clips_dir, config.retention_days, config.min_free_gb)
+    notifier = Notifier(config.ntfy_server, config.ntfy_topic, config.ntfy_token, config.site_url)
+    disk_guard = DiskGuard(config, notifier)
+    disk_guard.run()
 
     labels = config.animals + (("person",) if config.detect_people else ())
     detector = Detector(
@@ -96,25 +183,27 @@ def run(config: Config) -> None:
     scale = config.width / size
     motion = MotionDetector(config.motion_min_area) if config.motion else None
 
-    picam2 = Picamera2()
-    picam2.configure(
-        picam2.create_video_configuration(
-            main={"size": (config.width, config.height), "format": "YUV420"},
-            # BGR888 is RGB byte order in memory, which is what the models want.
-            lores={"size": lores, "format": "BGR888"},
-            transform=Transform(hflip=config.hflip, vflip=config.vflip),
-            controls={"FrameRate": config.fps},
+    try:
+        picam2 = Picamera2()
+        picam2.configure(
+            picam2.create_video_configuration(
+                main={"size": (config.width, config.height), "format": "YUV420"},
+                # BGR888 is RGB byte order in memory, which is what the models want.
+                lores={"size": lores, "format": "BGR888"},
+                transform=Transform(hflip=config.hflip, vflip=config.vflip),
+                controls={"FrameRate": config.fps},
+            )
         )
-    )
+    except Exception:  # unplugged, busy or a libcamera error: all mean try again later
+        LOG.exception("Cannot open the camera; trying again in %.0f seconds", CAMERA_RETRY)
+        detector.close()
+        time.sleep(CAMERA_RETRY)
+        raise SystemExit(1) from None
     encoder = H264Encoder(bitrate=config.bitrate, iperiod=config.fps, framerate=config.fps)
     circular = CircularOutput2(buffer_duration_ms=int(config.pre_roll * 1000))
     live = LiveStream(config.rtsp_url, encoder)
     worker = ClassifierWorker(config)
-    recorder = Recorder(
-        config, circular,
-        Notifier(config.ntfy_server, config.ntfy_topic, config.ntfy_token, config.site_url),
-        worker,
-    )
+    recorder = Recorder(config, circular, notifier, worker)
 
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
@@ -134,8 +223,11 @@ def run(config: Config) -> None:
     detect_interval = 1.0 / config.detect_fps
     next_detect = next_status = 0.0
     next_prune = time.monotonic() + PRUNE_INTERVAL
+    watchdog = Watchdog(WATCHDOG_TIMEOUT)
+    watchdog.start()
     try:
         while not stop.is_set():
+            watchdog.beat()
             live.maintain(circular)
             mono = time.monotonic()
             if mono < next_detect:
@@ -202,7 +294,7 @@ def run(config: Config) -> None:
                 })
             if mono >= next_prune:
                 next_prune = mono + PRUNE_INTERVAL
-                clips.prune(config.clips_dir, config.retention_days, config.min_free_gb)
+                disk_guard.run()
     finally:
         LOG.info("Stopping")
         recorder.close()
@@ -210,6 +302,7 @@ def run(config: Config) -> None:
         picam2.stop_recording()
         detector.close()
         config.status_path.unlink(missing_ok=True)
+        watchdog.stop()
 
 
 def main() -> None:
