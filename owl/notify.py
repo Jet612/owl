@@ -15,14 +15,21 @@ class Notifier:
         self._click_url = click_url
         if not self._url:
             LOG.warning("OWL_NTFY_TOPIC is not set; phone notifications are off")
+        elif not click_url:
+            LOG.warning("OWL_SITE_URL is not set; tapping a notification will not open the website")
 
-    def send(self, title: str, message: str, snapshot: Path | None) -> None:
+    def send(
+        self, title: str, message: str, snapshot: Path | None = None,
+        tags: str = "paw_prints", priority: str = "high",
+    ) -> None:
         """Send in the background so a slow network never stalls the camera loop."""
         if self._url:
-            threading.Thread(target=self._send, args=(title, message, snapshot), daemon=True).start()
+            threading.Thread(
+                target=self._send, args=(title, message, snapshot, tags, priority), daemon=True
+            ).start()
 
-    def _send(self, title: str, message: str, snapshot: Path | None) -> None:
-        headers = {"Title": title, "Tags": "paw_prints", "Priority": "high"}
+    def _send(self, title: str, message: str, snapshot: Path | None, tags: str, priority: str) -> None:
+        headers = {"Title": title, "Tags": tags, "Priority": priority}
         if self._click_url:
             headers["Click"] = self._click_url
         if self._token:

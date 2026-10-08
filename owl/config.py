@@ -9,19 +9,30 @@ def _str(name: str, default: str) -> str:
     return os.environ.get(name, default).strip()
 
 
+def _number(name: str, default, kind):
+    raw = os.environ.get(name, "").strip()
+    if not raw:  # unset, or left blank in owl.env
+        return default
+    try:
+        return kind(raw)
+    except ValueError:
+        what = "a whole number" if kind is int else "a number"
+        raise SystemExit(f"{name} must be {what}, not {raw!r} (see owl.env.example)") from None
+
+
 def _int(name: str, default: int) -> int:
-    return int(os.environ.get(name, default))
+    return _number(name, default, int)
 
 
 def _float(name: str, default: float) -> float:
-    return float(os.environ.get(name, default))
+    return _number(name, default, float)
 
 
 def _bool(name: str, default: bool) -> bool:
-    value = os.environ.get(name)
-    if value is None:
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
         return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return value in {"1", "true", "yes", "on"}
 
 
 def _list(name: str, default: str) -> tuple[str, ...]:
@@ -97,7 +108,10 @@ class Config:
     post_roll: float = field(default_factory=lambda: _float("OWL_POST_ROLL", 10))
     max_clip: float = field(default_factory=lambda: _float("OWL_MAX_CLIP", 120))
     retention_days: int = field(default_factory=lambda: _int("OWL_RETENTION_DAYS", 30))
+    # Below this much free space the oldest clips are deleted early, and the owner is told.
     min_free_gb: float = field(default_factory=lambda: _float("OWL_MIN_FREE_GB", 5))
+    # Below this percentage of free space the owner gets a warning, before anything is deleted.
+    low_disk_percent: float = field(default_factory=lambda: _float("OWL_LOW_DISK_PERCENT", 10))
 
     # Notifications
     ntfy_server: str = field(default_factory=lambda: _str("OWL_NTFY_SERVER", "https://ntfy.sh"))

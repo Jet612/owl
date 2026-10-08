@@ -115,8 +115,10 @@ The most useful options:
 | `OWL_MOTION_MIN_AREA` | `0.0015` | Smallest moving blob that triggers, as a fraction of the frame. Lower it to catch smaller or farther animals, at the cost of more false triggers |
 | `OWL_SPECIES_MIN_SCORE` | `0.95` | Confidence needed to name a species |
 | `OWL_UNIDENTIFIED_DAYS` | `3` | How long to keep clips of an animal nothing could name (`0` deletes them) |
-| `OWL_RETENTION_DAYS` | `30` | Days named clips are kept |
-| `OWL_MIN_FREE_GB` | `5` | Oldest clips are deleted early to keep this much free |
+| `OWL_SITE_URL` | none | The website's address. Tapping a notification opens it, so set it once the site is deployed |
+| `OWL_RETENTION_DAYS` | `30` | Days named clips are kept, counted from when they start |
+| `OWL_LOW_DISK_PERCENT` | `10` | Below this much free disk you get a warning notification (at most one a day) |
+| `OWL_MIN_FREE_GB` | `5` | Below this much free space the oldest clips are deleted early, and a notification says how many |
 | `OWL_PRE_ROLL` / `OWL_POST_ROLL` | `5` / `10` | Seconds kept before and after |
 | `OWL_HFLIP` / `OWL_VFLIP` | `false` | Flip the image for odd camera mounts |
 | `OWL_VIDEO_WIDTH` / `HEIGHT` / `FPS` / `BITRATE` | 1280 / 720 / 30 / 2.5 Mb/s | Stream and clip quality |
@@ -128,6 +130,60 @@ scientific name`. Add a line to teach the camera a new animal, or delete lines
 for animals that don't live near you (fewer choices means fewer mix-ups), then
 restart `owl-vision`. The first start after a change spends about 30 seconds
 encoding the list.
+
+## Recovery and disk space
+
+- If the camera stops delivering frames (unplugged, crashed), `owl-vision`
+  notices within 30 seconds and exits; systemd restarts it, and it keeps
+  retrying every ~15 seconds until the camera is back. Meanwhile
+  `/api/status` says `camera_online: false` and the live route returns 502.
+- Clips are the only copy. Named clips expire 30 days after they start and
+  unidentified ones after `OWL_UNIDENTIFIED_DAYS`; each clip's `expires_at`
+  says when. If the disk gets short of space the oldest clips are deleted
+  early, and you are always sent a notification saying so.
+- Leftovers from a power cut (unfinished recordings, orphaned thumbnails) are
+  removed after an hour.
+
+## Checking it from outside
+
+`scripts/smoke-test.sh` runs the API's acceptance checks the way viewers reach
+it: credentials and tokens, clip paging and filters, range requests, the live
+playlist and its CORS headers, and that nothing but the API answers through
+Funnel. Run it from a machine that is not on the tailnet:
+
+```sh
+OWL_API_URL=https://<pi-name>.<tailnet>.ts.net OWL_API_SECRET=... ./scripts/smoke-test.sh
+```
+
+Add `OWL_EXPECT_CAMERA=1` to make "camera offline" a failure. It changes
+nothing on the Pi.
+
+## If `owl-vision` crashes right after a restart
+
+Seen once on kernel 6.18 with HailoRT 4.23 (which logs a `find_vma` warning
+every time the service starts): the service died with `HAILO_HEF_FILE_CORRUPTED`
+or with an illegal instruction / segfault while importing `cv2`. The files on
+the SD card were fine. Only their cached copies in RAM were damaged, which
+`dpkg -V hailo-models python3-opencv` reveals (it reads through the cache) and
+reading the file with `dd iflag=direct` does not. The cause is not confirmed.
+Clearing the cache fixed it:
+
+```sh
+sync; echo 3 | sudo tee /proc/sys/vm/drop_caches
+sudo systemctl restart owl-vision
+```
+
+If it keeps happening, reboot the Pi instead of restarting the service.
+
+## Development
+
+```sh
+.venv/bin/python -m unittest discover -s tests -t .
+```
+
+The tests need no camera. They cover the token check (including tokens minted
+by the website's own function under Node), every API route, the live proxy,
+retention, the clip shapes the recorder stores, and the settings file.
 
 ## Managing the services
 
@@ -184,6 +240,13 @@ the browser.
 | `GET /api/clips/<id>/thumb` | JPEG snapshot |
 | `DELETE /api/clips/<id>` | Deletes a clip |
 | `GET /live/<token>/index.m3u8` | Live low-latency HLS. The token goes in the path. |
+
+Errors are JSON, like `{"error": "unauthorized"}` (401), `{"error": "not found"}`
+(404) or `{"error": "limit must be a number"}` (400). CORS allows any origin
+(`OWL_CORS_ORIGINS`), on live-stream responses too. The live route answers
+`502 {"error": "camera offline"}` or `{"error": "stream unavailable"}` whenever
+there is no stream, which the site treats as normal; playlists are sent with
+`Cache-Control: no-store`. Thumbnails are about 640 px wide.
 
 A clip looks like:
 

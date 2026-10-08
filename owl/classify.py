@@ -56,6 +56,10 @@ SPECIES_PROMPTS = (
 )
 
 COCO_CATEGORY = {"bird": "bird", "cat": "pet", "dog": "pet"}  # everything else counts as a mammal
+COCO_SCIENTIFIC = {
+    "bird": "Aves", "cat": "Felis catus", "dog": "Canis lupus familiaris",
+    "horse": "Equus ferus caballus", "sheep": "Ovis aries", "cow": "Bos taurus", "bear": "Ursidae",
+}
 
 
 @dataclass(frozen=True)
@@ -181,7 +185,9 @@ class HintClassifier:
         if hint is None:
             return [Prediction("empty scene", 1.0, "none")]
         label, score = hint
-        return [Prediction(label, score, COCO_CATEGORY.get(label, "mammal"))]
+        return [Prediction(
+            label, score, COCO_CATEGORY.get(label, "mammal"), COCO_SCIENTIFIC.get(label, "")
+        )]
 
 
 class ClassifierWorker:
